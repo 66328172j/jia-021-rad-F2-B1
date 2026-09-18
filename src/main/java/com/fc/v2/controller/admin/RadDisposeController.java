@@ -68,4 +68,23 @@ public class RadDisposeController extends BaseController {
     public AjaxResult rollback(Long id, String remark) {
         return toAjax(radDisposeService.rollback(id, remark) != null ? 1 : 0);
     }
+
+    @Log(title = "分区剂量异常处置单内容修改", action = "edit")
+    @ApiOperation(value = "修改内容", notes = "修改内容：已办结单据锁定，不可保存")
+    @PostMapping("/edit")
+    @RequiresPermissions("radDispose:edit")
+    @ResponseBody
+    public AjaxResult edit(Long id, String content) {
+        // 锁单口径在 service 统一把关，入口不另写判定
+        return toAjax(radDisposeService.updateContent(id, content) ? 1 : 0);
+    }
+
+    @Log(title = "分区剂量异常处置单删除", action = "remove")
+    @ApiOperation(value = "删除", notes = "删除：逻辑删除保留环节链，已办结单据锁定不可删")
+    @DeleteMapping("/remove")
+    @RequiresPermissions("radDispose:remove")
+    @ResponseBody
+    public AjaxResult remove(Long id) {
+        return toAjax(radDisposeService.remove(id) ? 1 : 0);
+    }
 }

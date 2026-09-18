@@ -44,7 +44,8 @@ public class RadAlarmBillController extends BaseController {
     @RequiresPermissions("rad:radAlarmBill:list")
     @ResponseBody
     public ResultTable list(TRadAlarmBill record) {
-        QueryWrapper<TRadAlarmBill> queryWrapper = new QueryWrapper<TRadAlarmBill>();
+        // 以页面查询条件构造 wrapper（有效单据口径 del_flag=0 由 service 统一兜底）
+        QueryWrapper<TRadAlarmBill> queryWrapper = new QueryWrapper<TRadAlarmBill>(record);
         startPage();
         com.github.pagehelper.PageInfo<TRadAlarmBill> page =
                 new com.github.pagehelper.PageInfo<TRadAlarmBill>(radAlarmBillService.selectTRadAlarmBillList(queryWrapper));

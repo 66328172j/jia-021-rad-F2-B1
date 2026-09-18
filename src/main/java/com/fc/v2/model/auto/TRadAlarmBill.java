@@ -37,10 +37,10 @@ public class TRadAlarmBill implements Serializable {
     @ApiModelProperty(value = "预警单号")
     private String billNo;
 
-    /** 所属场所 */
+    /** 所属场所（对齐 t_rad_site.id：bigint，雪花 ID，禁止用 int 存放大 ID） */
     @TableField("site_id")
     @ApiModelProperty(value = "所属场所")
-    private Integer siteId;
+    private Long siteId;
 
     /** 剂量率(μSv/h) */
     @TableField("qty")
@@ -105,11 +105,11 @@ public class TRadAlarmBill implements Serializable {
         this.billNo = billNo;
     }
 
-    public Integer getSiteId() {
+    public Long getSiteId() {
         return siteId;
     }
 
-    public void setSiteId(Integer siteId) {
+    public void setSiteId(Long siteId) {
         this.siteId = siteId;
     }
 

@@ -36,10 +36,10 @@ public class TRadDoseSummary implements Serializable {
     @ApiModelProperty(value = "统计月份 yyyy-MM")
     private String period;
 
-    /** 场所/机房 */
+    /** 场所/机房（对齐 t_rad_site.id：bigint） */
     @TableField("site_id")
     @ApiModelProperty(value = "场所/机房")
-    private Integer siteId;
+    private Long siteId;
 
     /** 剂量合计(mSv) */
     @TableField("total_qty")
@@ -90,8 +90,8 @@ public class TRadDoseSummary implements Serializable {
     public void setId(Long id) { this.id = id; }
     public String getPeriod() { return period; }
     public void setPeriod(String period) { this.period = period; }
-    public Integer getSiteId() { return siteId; }
-    public void setSiteId(Integer siteId) { this.siteId = siteId; }
+    public Long getSiteId() { return siteId; }
+    public void setSiteId(Long siteId) { this.siteId = siteId; }
     public BigDecimal getTotalQty() { return totalQty; }
     public void setTotalQty(BigDecimal totalQty) { this.totalQty = totalQty; }
     public Integer getRowCount() { return rowCount; }

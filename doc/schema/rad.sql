@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS t_rad_alarm_bill (
   id bigint NOT NULL COMMENT '主键',
   bill_no varchar(64) DEFAULT NULL COMMENT '预警单号',
-  site_id int DEFAULT NULL COMMENT '所属场所',
+  site_id bigint DEFAULT NULL COMMENT '所属场所（对齐 t_rad_site.id）',
   qty decimal(12,2) DEFAULT NULL COMMENT '剂量率(μSv/h)',
   alarm_level decimal(14,4) DEFAULT NULL COMMENT '预警档位',
   status int DEFAULT NULL COMMENT '状态 0待处理 1已处理 2已办结',
@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS t_rad_source_task (
 CREATE TABLE IF NOT EXISTS t_rad_dose_summary (
   id bigint NOT NULL COMMENT '主键',
   period varchar(7) DEFAULT NULL COMMENT '统计月份 yyyy-MM',
-  site_id int DEFAULT NULL COMMENT '场所/机房',
+  site_id bigint DEFAULT NULL COMMENT '场所/机房（对齐 t_rad_site.id）',
   total_qty decimal(14,2) DEFAULT NULL COMMENT '剂量合计(mSv)',
   row_count int DEFAULT NULL COMMENT '参与汇总的明细行数',
   status int DEFAULT NULL COMMENT '汇总状态 0待生成 1已生成',
