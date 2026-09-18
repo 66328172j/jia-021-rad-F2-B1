@@ -15,6 +15,7 @@ import com.fc.v2.mapper.auto.TRadAlarmBillMapper;
 import com.fc.v2.mapper.auto.TRadDoseSummaryMapper;
 import com.fc.v2.model.auto.TRadAlarmBill;
 import com.fc.v2.model.auto.TRadDoseSummary;
+import com.fc.v2.rad.support.RadSiteCaliber;
 import com.fc.v2.service.ITRadDoseSummaryService;
 
 /**
@@ -34,6 +35,10 @@ public class TRadDoseSummaryServiceImpl implements ITRadDoseSummaryService {
 
     @javax.annotation.Resource
     private TRadAlarmBillMapper radAlarmBillMapper;
+
+    /** 场所档案有效口径：与预警单新增/修改入口共用同一份，汇总侧不得另写一套 */
+    @javax.annotation.Resource
+    private RadSiteCaliber radSiteCaliber;
 
     @Override
     public TRadDoseSummary pick(String period, Integer siteId) {
@@ -62,11 +67,15 @@ public class TRadDoseSummaryServiceImpl implements ITRadDoseSummaryService {
                 .eq("del_flag", 0)
                 .in("status", 1, 2));
 
-        // 按场所分组累计；缺剂量值(qty 为空)的记录跳过本条、继续汇总其余记录
+        // 按场所分组累计；缺剂量值(qty 为空)的记录跳过本条、继续汇总其余记录。
+        // 场所口径与写入入口一致：显式停用/删除的场所不参与汇总；
+        // 档案缺失的历史场所不否决（存量兼容，见 RadSiteCaliber）。
+        java.util.Set<Long> blocked = this.radSiteCaliber.blockedSiteIds();
         Map<Integer, BigDecimal> sum = new TreeMap<Integer, BigDecimal>();
         Map<Integer, Integer> cnt = new TreeMap<Integer, Integer>();
         for (TRadAlarmBill r : rows) {
-            if (r.getSiteId() == null || r.getQty() == null) {
+            if (r.getSiteId() == null || r.getQty() == null
+                    || blocked.contains(r.getSiteId().longValue())) {
                 continue;
             }
             sum.merge(r.getSiteId(), r.getQty(), BigDecimal::add);

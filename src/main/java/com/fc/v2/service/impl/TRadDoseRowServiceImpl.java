@@ -32,30 +32,40 @@ public class TRadDoseRowServiceImpl implements ITRadDoseRowService {
 
     @Override
     public int submitBatch(String batchNo, List<TRadDoseRow> rows) {
-        String no = rows.get(0).getBatchNo();
-        java.util.List<TRadDoseRow> errors = new java.util.ArrayList<TRadDoseRow>();
-        int seq = 0;
-        for (TRadDoseRow r : rows) {
+        if (rows == null || rows.isEmpty()) {
+            // 空批次：0 行入库
+            return 0;
+        }
+        if (rows.size() > MAX_ROWS) {
+            // 超单批上限：整批不入库
+            return -1;
+        }
+        // 重复提交识别：同批次号已有入库记录（成功或失败明细）即视为重放，
+        // 不再重复入库，直接回既有成功行数，保证重复提交结果一致
+        Integer existed = this.radDoseRowMapper.selectCount(new QueryWrapper<TRadDoseRow>()
+                .eq("batch_no", batchNo));
+        if (existed != null && existed > 0) {
+            Integer okExisted = this.radDoseRowMapper.selectCount(new QueryWrapper<TRadDoseRow>()
+                    .eq("batch_no", batchNo).eq("status", STATUS_OK));
+            return okExisted == null ? 0 : okExisted;
+        }
+
+        int ok = 0;
+        for (int i = 0; i < rows.size(); i++) {
+            TRadDoseRow r = rows.get(i);
+            // 保留原始行号（批次内从 1 起）
+            r.setRowNo(Integer.valueOf(i + 1));
+            r.setBatchNo(batchNo);
             if (r.getItemCode() == null || r.getItemCode().trim().isEmpty()
                     || r.getQty() == null
                     || r.getQty().compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                seq++;
-                r.setRowNo(Integer.valueOf(seq));
-                r.setBatchNo(no);
+                // 非法行：记失败明细，不中断整批
                 r.setStatus(STATUS_FAIL);
-                this.radDoseRowMapper.insert(r);
-                errors.add(r);
+            } else {
+                r.setStatus(STATUS_OK);
+                ok++;
             }
-        }
-        if (!errors.isEmpty()) {
-            return 0;
-        }
-        int ok = 0;
-        for (TRadDoseRow r : rows) {
-            r.setBatchNo(no);
-            r.setStatus(STATUS_OK);
             this.radDoseRowMapper.insert(r);
-            ok++;
         }
         return ok;
     }
@@ -63,6 +73,6 @@ public class TRadDoseRowServiceImpl implements ITRadDoseRowService {
     @Override
     public List<TRadDoseRow> listErrors(String batchNo) {
         return this.radDoseRowMapper.selectList(new QueryWrapper<TRadDoseRow>()
-                .eq("batch_no", batchNo).eq("status", STATUS_FAIL));
+                .eq("batch_no", batchNo).eq("status", STATUS_FAIL).orderByAsc("row_no"));
     }
 }

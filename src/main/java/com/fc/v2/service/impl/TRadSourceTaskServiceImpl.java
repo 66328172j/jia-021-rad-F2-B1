@@ -1,29 +1,25 @@
 package com.fc.v2.service.impl;
 
+import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fc.v2.mapper.auto.TRadSourceTaskMapper;
 import com.fc.v2.model.auto.TRadSourceTask;
 import com.fc.v2.service.ITRadSourceTaskService;
 
 /**
- * 放射源出入库任务条目 Service业务层处理（scheduling-job 形状：周期执行）
+ * 放射源出入库任务条目 Service业务层处理（scheduling-job 形状：周期执行）。
+ * 执行窗口/到期/状态/容错口径统一走 {@link AbstractDueScanService}，本类只做字段适配。
  *
  * @author fuce
  * @date 2026-09-14
  */
 @Service
-public class TRadSourceTaskServiceImpl implements ITRadSourceTaskService {
-
-    private static final int WIN_FROM = 2;
-    private static final int WIN_TO = 5;
-    private static final int STATUS_WAIT = 0;
-    private static final int STATUS_DONE = 1;
-    private static final int STATUS_FAIL = 2;
+public class TRadSourceTaskServiceImpl extends AbstractDueScanService<TRadSourceTask>
+        implements ITRadSourceTaskService {
 
     @javax.annotation.Resource
     private TRadSourceTaskMapper radSourceTaskMapper;
@@ -33,38 +29,43 @@ public class TRadSourceTaskServiceImpl implements ITRadSourceTaskService {
         return this.radSourceTaskMapper.selectById(id);
     }
 
-    /**
-     * 时段比较统一走**墙钟字符串**（yyyy-MM-dd HH:mm:ss）：JDBC 的 serverTimezone 与本机
-     * 时区不对称，直接把 java.util.Date 作参数会整体偏移，使"恰好到期"这类边界用例错判。
-     */
-    private static String ts(Date d) {
-        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(d);
-    }
-
     @Override
     public List<TRadSourceTask> listDue(Date at) {
-        List<TRadSourceTask> all = this.radSourceTaskMapper.selectList(new QueryWrapper<TRadSourceTask>());
-        List<TRadSourceTask> due = new java.util.ArrayList<TRadSourceTask>();
-        for (TRadSourceTask r : all) {
-            if (r.getDueAt() != null && ts(r.getDueAt()).compareTo(ts(at)) < 0) {
-                due.add(r);
-            }
-        }
-        return due;
+        return super.listDue(at);
     }
 
     @Override
     public int runOnce(Date at) {
-        List<TRadSourceTask> due = listDue(at);
-        if (due.get(0) == null) {
-            return 0;
-        }
-        int ok = 0;
-        for (TRadSourceTask r : due) {
-            if (r.getAmount().signum() >= 0) {
-                ok++;
-            }
-        }
-        return ok;
+        return super.runOnce(at);
+    }
+
+    @Override
+    protected com.baomidou.mybatisplus.core.mapper.BaseMapper<TRadSourceTask> mapper() {
+        return radSourceTaskMapper;
+    }
+
+    @Override
+    protected Date dueAtOf(TRadSourceTask row) {
+        return row.getDueAt();
+    }
+
+    @Override
+    protected BigDecimal amountOf(TRadSourceTask row) {
+        return row.getAmount();
+    }
+
+    @Override
+    protected Integer statusOf(TRadSourceTask row) {
+        return row.getStatus();
+    }
+
+    @Override
+    protected Integer delFlagOf(TRadSourceTask row) {
+        return row.getDelFlag();
+    }
+
+    @Override
+    protected void applyStatus(TRadSourceTask row, int status) {
+        row.setStatus(status);
     }
 }

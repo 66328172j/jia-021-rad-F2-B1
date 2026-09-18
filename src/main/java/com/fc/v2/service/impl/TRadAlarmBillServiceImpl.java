@@ -12,10 +12,9 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fc.v2.common.support.ConvertUtil;
 import com.fc.v2.mapper.auto.TRadAlarmBillMapper;
 import com.fc.v2.mapper.auto.TRadDoseRuleMapper;
-import com.fc.v2.mapper.auto.TRadSiteMapper;
 import com.fc.v2.model.auto.TRadAlarmBill;
 import com.fc.v2.model.auto.TRadDoseRule;
-import com.fc.v2.model.auto.TRadSite;
+import com.fc.v2.rad.support.RadSiteCaliber;
 import com.fc.v2.service.ITRadAlarmBillService;
 import com.fc.v2.util.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,13 +27,15 @@ import org.springframework.stereotype.Service;
  * @date 2026-09-12
  */
 @Service
-public class TRadAlarmBillServiceImpl extends ServiceImpl<TRadAlarmBillMapper, TRadAlarmBill> implements ITRadAlarmBillService {
+public class TRadAlarmBillServiceImpl extends ServiceImpl<TRadAlarmBillMapper, TRadAlarmBill>
+        implements ITRadAlarmBillService {
 
     @Autowired
     private TRadDoseRuleMapper radDoseRuleMapper;
 
+    /** 场所档案有效口径（新增/修改两处入口共用同一份，禁止各写各的） */
     @Autowired
-    private TRadSiteMapper radSiteMapper;
+    private RadSiteCaliber radSiteCaliber;
 
     @Override
     public TRadAlarmBill selectTRadAlarmBillById(Long id) {
@@ -45,9 +46,12 @@ public class TRadAlarmBillServiceImpl extends ServiceImpl<TRadAlarmBillMapper, T
 
     @Override
     public List<TRadAlarmBill> selectTRadAlarmBillList(Wrapper<TRadAlarmBill> queryWrapper) {
-        QueryWrapper<TRadAlarmBill> wrapper = new QueryWrapper<TRadAlarmBill>();
-        com.github.pagehelper.PageHelper.startPage(1, 10);
-        wrapper.eq("status", 0);
+        // 沿用上游查询条件，只补一条全口径：逻辑删除的不出现在台账；
+        // 不得像旧实现那样无视条件强制只看待办、并硬插分页（分页由控制器 startPage() 统一下发）
+        QueryWrapper<TRadAlarmBill> wrapper = queryWrapper instanceof QueryWrapper
+                ? (QueryWrapper<TRadAlarmBill>) queryWrapper
+                : new QueryWrapper<TRadAlarmBill>();
+        wrapper.eq("del_flag", 0);
         return this.baseMapper.selectList(wrapper);
     }
 
@@ -65,9 +69,8 @@ public class TRadAlarmBillServiceImpl extends ServiceImpl<TRadAlarmBillMapper, T
         if (bandArch == null) {
             return 0;
         }
-        TRadSite refArch = radSiteMapper.selectOne(new QueryWrapper<TRadSite>()
-                .eq("id", record.getSiteId()).eq("del_flag", 0));
-        if (refArch == null || (refArch.getStatus() != null && refArch.getStatus() == 1)) {
+        // 场所口径：新增、修改两处入口必须一致，统一走 RadSiteCaliber
+        if (radSiteCaliber.requireActive(record.getSiteId()) == null) {
             return 0;
         }
         if (StringUtils.isNotEmpty(record.getBillNo())) {
@@ -77,20 +80,7 @@ public class TRadAlarmBillServiceImpl extends ServiceImpl<TRadAlarmBillMapper, T
                 return 0;
             }
         }
-        BigDecimal bandVal = record.getQty();
-        int bandLevel = 0;
-        if (bandVal != null) {
-            if (bandVal.compareTo(bandArch.getTh1Max()) <= 0) {
-                bandLevel = 1;
-            } else if (bandVal.compareTo(bandArch.getTh2Max()) <= 0) {
-                bandLevel = 2;
-            } else if (bandVal.compareTo(bandArch.getTh3Max()) <= 0) {
-                bandLevel = 3;
-            } else {
-                bandLevel = 4;
-            }
-        }
-        record.setAlarmLevel(java.math.BigDecimal.valueOf(bandLevel));
+        record.setAlarmLevel(bandLevelOf(record.getQty(), bandArch));
 
         record.setDelFlag(0);
         return this.baseMapper.insert(record);
@@ -102,7 +92,12 @@ public class TRadAlarmBillServiceImpl extends ServiceImpl<TRadAlarmBillMapper, T
             return 0;
         }
 
-        if (record.getId() != null && StringUtils.isNotEmpty(record.getBillNo())) {
+        // 与新增入口同一份场所口径：不得把单子挂到停用/删除的场所上
+        if (record.getSiteId() != null && radSiteCaliber.requireActive(record.getSiteId()) == null) {
+            return 0;
+        }
+
+        if (StringUtils.isNotEmpty(record.getBillNo())) {
             Integer dupCnt = this.baseMapper.selectCount(new QueryWrapper<TRadAlarmBill>()
                     .eq("bill_no", record.getBillNo()).ne("id", record.getId()).eq("del_flag", 0));
             if (dupCnt != null && dupCnt > 0) {
@@ -119,11 +114,46 @@ public class TRadAlarmBillServiceImpl extends ServiceImpl<TRadAlarmBillMapper, T
     @Override
     public int deleteTRadAlarmBillByIds(String ids) {
         Long[] idArr = ConvertUtil.toLongArray(ids);
-        return this.baseMapper.deleteBatchIds(Arrays.asList(idArr));
+        if (idArr == null || idArr.length == 0) {
+            return 0;
+        }
+        // 逻辑删除：与表上 del_flag 口径一致，物理删除会让按月汇总/台账断档
+        TRadAlarmBill patch = new TRadAlarmBill();
+        patch.setDelFlag(1);
+        patch.setUpdateTime(new Date());
+        return this.baseMapper.update(patch, new UpdateWrapper<TRadAlarmBill>()
+                .in("id", Arrays.asList(idArr))
+                .eq("del_flag", 0));
     }
 
     @Override
     public int deleteTRadAlarmBillById(Long id) {
-        return this.baseMapper.deleteById(id);
+        if (id == null) {
+            return 0;
+        }
+        TRadAlarmBill patch = new TRadAlarmBill();
+        patch.setId(id);
+        patch.setDelFlag(1);
+        patch.setUpdateTime(new Date());
+        return this.baseMapper.update(patch, new UpdateWrapper<TRadAlarmBill>()
+                .eq("id", id)
+                .eq("del_flag", 0));
+    }
+
+    /** 剂量率分档：按启用规则的三档上限判档；等于上限取高一档，缺值记 0 档 */
+    private java.math.BigDecimal bandLevelOf(BigDecimal qty, TRadDoseRule rule) {
+        int bandLevel = 0;
+        if (qty != null) {
+            if (qty.compareTo(rule.getTh1Max()) <= 0) {
+                bandLevel = 1;
+            } else if (qty.compareTo(rule.getTh2Max()) <= 0) {
+                bandLevel = 2;
+            } else if (qty.compareTo(rule.getTh3Max()) <= 0) {
+                bandLevel = 3;
+            } else {
+                bandLevel = 4;
+            }
+        }
+        return BigDecimal.valueOf(bandLevel);
     }
 }
